@@ -11,6 +11,7 @@ This project demonstrates an **agentic AI pipeline** for fraud detection that in
 - **Unsupervised models:** `Isolation Forest`, `Autoencoder`
 - **Explainability:** SHAP feature attribution + optional natural-language explanations via **Ollama LLM** [in progress]
 - **UI:** Built with Streamlit for interactive exploration and analysis
+- **Adversarial Attacks:** Evaluate robustness with two lightweight attacks (Noise Injection and Fraud Camouflage)
 
 ---
 
@@ -20,21 +21,19 @@ This project demonstrates an **agentic AI pipeline** for fraud detection that in
 ✅ Visualizes confusion matrices and key metrics (Precision, Recall, ROC-AUC, PR-AUC)  
 ✅ Explains model reasoning using **SHAP** values  
 ✅ Provides natural-language transaction analysis powered by **Ollama** (e.g. `phi3:mini`)  
-✅ Fallback explanations when LLM is offline  
-✅ Modular structure — easily extendable to other datasets or models  
 
 ---
 
 ## Project Structure - for easier understanding of the directory
 fraud_agent/
-│
-├── app.py # Streamlit UI entry point
-├── models.py # Model training/loading utilities
-├── preprocess.py # Data loading & preprocessing
-├── eval.py # Metrics & confusion matrix plotting
-├── explainer.py # SHAP + LLM/Ollama explainer
-├── agent.py # Pipeline integration logic
-├── data/ # (optional) dataset folder
-├── models/ # (optional) saved models
-└── requirements.txt # Python dependencies
+├── app.py               # Streamlit UI entry point
+├── agent.py             # Pipeline integration logic
+├── attacks.py           # Noise & Camouflage attacks + evaluation helpers 
+├── eval.py              # Metrics & confusion matrix plotting
+├── explainer.py         # SHAP + LLM/Ollama explainer
+├── models.py            # Model training/loading utilities
+├── preprocess.py        # Data loading & preprocessing
+├── data/                # (optional) dataset folder
+├── models/              # (optional) saved models
+└── requirements.txt     # Python dependencies
 
