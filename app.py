@@ -13,10 +13,18 @@ from models import load_models, train_supervised, train_unsupervised, save_model
 from agent import train_all, run_all, explain_transaction
 from explainer import make_ollama_client, is_ollama_up
 
+from attacks import run_attacks_and_eval, flatten_results
+import time
+from eval import plot_confusion_matrix
+from attacks import (
+    noise_attack, camouflage_attack,
+    evaluate_models_on_set, flatten_results
+)
+
 
 st.set_page_config(page_title="Agentic Fraud Detector", layout="wide")
 
-st.title("🔎 Agentic Financial Fraud Detector")
+st.title("Agentic Financial Fraud Detector")
 st.caption("Detectors: XGBoost, RandomForest, IsolationForest, Autoencoder • Self-explaining agent with SHAP + LLM")
 
 uploaded = st.file_uploader("Upload creditcard.csv", type=["csv"])
@@ -35,10 +43,16 @@ ollama_model = st.text_input("Ollama model name", value="phi3:mini")
 
 if uploaded is not None:
     # Save to temp and process
-    path = r"C:\Users\pagar\OneDrive\Desktop\projects\fraud_agent\data\creditcard.csv"
-    with open(path, "wb") as f: f.write(uploaded.getbuffer())
-    df, X_train, X_test, y_train, y_test, scalers, feature_names = load_and_preprocess(path)
-
+    # uploaded.seek(0)
+    # path = r"C:\Users\pagar\OneDrive\Desktop\projects\fraud_agent\data\creditcard.csv"
+    # with open(path, "wb") as f: f.write(uploaded.getbuffer())
+    # df, X_train, X_test, y_train, y_test, scalers, feature_names = load_and_preprocess(path)
+    try:
+        # read directly from the buffer
+        df, X_train, X_test, y_train, y_test, scalers, feature_names = load_and_preprocess(uploaded)
+    except Exception as e:
+        st.error(f"Could not read the uploaded CSV: {e}")
+        st.stop()
     # Load or train models
     try:
         models = load_models("models")
@@ -93,6 +107,73 @@ if uploaded is not None:
         text, shap_dict, proba_dict, anomaly_dict = explain_transaction(
             idx, X_test, models, feature_names, payload, llm_client=llm_client
         )
-        st.code(text)
+        # st.write(text)
+        st.markdown(
+            f"""
+            <div style="
+                background-color:#1E1E1E;
+                padding:15px;
+                border-radius:10px;
+                border:1px solid #444;
+                font-size:16px;
+                line-height:1.6;
+                color:#F0F0F0;">
+                {text}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        # st.info(text)
+        # st.success(text)
+        # st.warning(text)
+
         st.write("Top features (SHAP, XGBoost):")
         st.table(pd.DataFrame(shap_dict, columns=["feature","shap_value","|shap|"]))
+# ------------Stress test section --------------
+    st.markdown("---")
+    st.header("⚠️ Stress Test (Noise Injection & Fraud Camouflage)")
+
+    col1, col2, col3 = st.columns([1.2, 1.2, 2])
+    with col1:
+        noise_scale = st.slider("Noise std (relative)", 0.00, 0.20, 0.05, 0.01, help="Gaussian noise σ applied to numeric columns")
+    with col2:
+        camo_frac  = st.slider("Camouflage fraction", 0.0, 0.8, 0.30, 0.05, help="Fraction of fraud rows camouflaged")
+    with col3:
+        st.caption("Noise injection perturbs all numeric features.\nCamouflage replaces a fraction of FRAUD rows with legit medians.")
+
+    if st.button("Run Stress Test"):
+        with st.spinner("Attacking test data and evaluating models…"):
+            # Baseline (clean)
+            res_clean = evaluate_models_on_set(models, X_test, y_test, feature_names)
+
+            # Noise
+            X_noisy = noise_attack(X_test, scale=noise_scale)
+            res_noise = evaluate_models_on_set(models, X_noisy, y_test, feature_names)
+
+            # Camouflage (labels stay same)
+            X_camo, y_camo = camouflage_attack(X_test, y_test, frac=camo_frac)
+            res_camo = evaluate_models_on_set(models, X_camo, y_camo, feature_names)
+
+            # Make a results dict compatible with flatten_results
+            results_attack = {
+                "clean":      res_clean,
+                f"noise_{int(noise_scale*100)}pct": res_noise,
+                f"camo_{int(camo_frac*100)}pct":    res_camo
+            }
+            df_results = flatten_results(results_attack)
+
+        st.success("Done.")
+        st.dataframe(df_results.sort_values(["scenario", "model"]).reset_index(drop=True), height=320)
+
+        # Quick bar charts
+        try:
+            st.subheader("ROC-AUC by scenario")
+            st.bar_chart(df_results.pivot(index="scenario", columns="model", values="roc_auc"))
+        except Exception:
+            pass
+
+        try:
+            st.subheader("PR-AUC by scenario")
+            st.bar_chart(df_results.pivot(index="scenario", columns="model", values="pr_auc"))
+        except Exception:
+            pass
